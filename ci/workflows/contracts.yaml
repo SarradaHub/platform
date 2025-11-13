@@ -1,0 +1,47 @@
+name: Contracts
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      install-command:
+        required: false
+        type: string
+        default: npm install
+      test-command:
+        required: false
+        type: string
+        default: npm run contract:test
+      schema-glob:
+        required: false
+        type: string
+        default: platform/contracts/schemas/**/*.json
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Lint JSON Schemas
+        run: npx --yes ajv-cli@5.0.0 validate -s "${{ inputs.schema-glob }}"
+        working-directory: ${{ github.workspace }}
+
+      - name: Run contract tests
+        run: ${{ inputs.test-command }}

@@ -1,0 +1,133 @@
+asyncapi: "3.0.0"
+info:
+  title: Platform Event Mesh
+  version: 1.0.0
+  description: Canonical event contracts for the unified sports & betting platform.
+servers:
+  kafka-dev:
+    host: kafka.dev.platform.internal:9092
+    protocol: kafka-secure
+    description: Development Kafka cluster
+  kafka-prod:
+    host: kafka.prod.platform.internal:9093
+    protocol: kafka-secure
+    description: Production Kafka cluster
+channels:
+  identity.user.created.v1:
+    address: identity.user.created.v1
+    messages:
+      userCreatedV1:
+        $ref: "#/components/messages/userCreatedV1"
+  scheduling.match.scheduled.v1:
+    address: scheduling.match.scheduled.v1
+    messages:
+      matchScheduledV1:
+        $ref: "#/components/messages/matchScheduledV1"
+  betting.bet.market.created.v1:
+    address: betting.bet.market.created.v1
+    messages:
+      betMarketCreatedV1:
+        $ref: "#/components/messages/betMarketCreatedV1"
+  betting.wager.accepted.v1:
+    address: betting.wager.accepted.v1
+    messages:
+      wagerAcceptedV1:
+        $ref: "#/components/messages/wagerAcceptedV1"
+  finance.payment.received.v1:
+    address: finance.payment.received.v1
+    messages:
+      paymentReceivedV1:
+        $ref: "#/components/messages/paymentReceivedV1"
+  ledger.transaction.recorded.v1:
+    address: ledger.transaction.recorded.v1
+    messages:
+      ledgerTransactionRecordedV1:
+        $ref: "#/components/messages/ledgerTransactionRecordedV1"
+operations:
+  publishUserCreated:
+    action: send
+    channel:
+      $ref: "#/channels/identity.user.created.v1"
+    summary: Identity service publishes newly created user records.
+  consumeUserCreated:
+    action: receive
+    channel:
+      $ref: "#/channels/identity.user.created.v1"
+    summary: Downstream services subscribe to user creation events.
+  publishMatchScheduled:
+    action: send
+    channel:
+      $ref: "#/channels/scheduling.match.scheduled.v1"
+    summary: Saturday League API emits match scheduling events.
+  consumeMatchScheduled:
+    action: receive
+    channel:
+      $ref: "#/channels/scheduling.match.scheduled.v1"
+    summary: SarradaBet consumes match schedules to generate markets.
+  publishBetMarketCreated:
+    action: send
+    channel:
+      $ref: "#/channels/betting.bet.market.created.v1"
+    summary: SarradaBet publishes new betting markets.
+  consumeBetMarketCreated:
+    action: receive
+    channel:
+      $ref: "#/channels/betting.bet.market.created.v1"
+    summary: Frontends/analytics subscribe for live updates.
+  publishWagerAccepted:
+    action: send
+    channel:
+      $ref: "#/channels/betting.wager.accepted.v1"
+    summary: SarradaBet publishes accepted wagers.
+  consumeWagerAccepted:
+    action: receive
+    channel:
+      $ref: "#/channels/betting.wager.accepted.v1"
+    summary: Ledger service records financial entries.
+  publishPaymentReceived:
+    action: send
+    channel:
+      $ref: "#/channels/finance.payment.received.v1"
+    summary: Finance systems publish received payments.
+  consumePaymentReceived:
+    action: receive
+    channel:
+      $ref: "#/channels/finance.payment.received.v1"
+    summary: Ledger service and analytics ingest payment events.
+  publishLedgerTransactionRecorded:
+    action: send
+    channel:
+      $ref: "#/channels/ledger.transaction.recorded.v1"
+    summary: Ledger service publishes normalized accounting entries.
+components:
+  messages:
+    userCreatedV1:
+      name: user.created.v1
+      summary: User identity creation event.
+      payload:
+        $ref: "../schemas/identity/user.created.v1.json"
+    matchScheduledV1:
+      name: match.scheduled.v1
+      summary: Match scheduled or updated.
+      payload:
+        $ref: "../schemas/scheduling/match.scheduled.v1.json"
+    betMarketCreatedV1:
+      name: bet.market.created.v1
+      summary: New betting market available.
+      payload:
+        $ref: "../schemas/betting/bet.market.created.v1.json"
+    wagerAcceptedV1:
+      name: wager.accepted.v1
+      summary: Accepted wager record for settlement.
+      payload:
+        $ref: "../schemas/betting/wager.accepted.v1.json"
+    paymentReceivedV1:
+      name: payment.received.v1
+      summary: Payment recorded in finance system.
+      payload:
+        $ref: "../schemas/finance/payment.received.v1.json"
+    ledgerTransactionRecordedV1:
+      name: ledger.transaction.recorded.v1
+      summary: Normalized ledger entry.
+      payload:
+        $ref: "../schemas/ledger/ledger.transaction.recorded.v1.json"

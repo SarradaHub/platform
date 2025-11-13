@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform.example.com/schemas/betting/wager.accepted.v1.json",
+  "title": "wager.accepted.v1",
+  "type": "object",
+  "required": ["eventId", "schemaVersion", "occurredAt", "source", "payload"],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "const": "v1"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "traceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "causationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "sarradabet"
+      ]
+    },
+    "context": {
+      "type": "object",
+      "required": ["tenantId", "environment"],
+      "properties": {
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["dev", "staging", "prod"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "wagerId",
+        "betId",
+        "userId",
+        "stake",
+        "oddId",
+        "acceptedAt"
+      ],
+      "properties": {
+        "wagerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "betId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "oddId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "userId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "stake": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "potentialPayout": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "channel": {
+          "type": "string",
+          "enum": ["web", "mobile", "api"]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

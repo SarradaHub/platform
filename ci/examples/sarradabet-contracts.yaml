@@ -1,0 +1,17 @@
+name: Contracts
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/services/events/**"
+      - "apps/api/prisma/**"
+      - "platform/contracts/schemas/betting/**"
+
+jobs:
+  contracts:
+    uses: LMafra/platform-event-mesh/platform/ci/workflows/contracts.yaml@main
+    with:
+      working-directory: sarradabet/apps/api
+      install-command: npm install
+      test-command: npm run test:unit -- --runInBand
+      schema-glob: platform/contracts/schemas/betting/*.json

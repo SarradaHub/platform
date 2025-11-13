@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  gateway:
+    build: .
+    environment:
+      PORT: 4000
+      AWS_REGION: ${AWS_REGION}
+      GLUE_REGISTRY_NAME: ${GLUE_REGISTRY_NAME}
+      KAFKA_BROKERS: ${KAFKA_BROKERS}
+      KAFKA_CLIENT_ID: platform-event-gateway
+      KAFKA_SSL: "true"
+      KAFKA_USERNAME: ${KAFKA_USERNAME:-}
+      KAFKA_PASSWORD: ${KAFKA_PASSWORD:-}
+      SCHEMA_CACHE_TTL_MS: 300000
+    ports:
+      - "4000:4000"
+    depends_on: []
