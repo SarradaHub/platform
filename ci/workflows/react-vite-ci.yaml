@@ -1,0 +1,111 @@
+name: React Vite CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: '20'
+      working-directory:
+        type: string
+        required: true
+      install-command:
+        type: string
+        default: npm ci
+      lint-command:
+        type: string
+        default: npm run lint
+      test-command:
+        type: string
+        default: npm run test -- --coverage
+      build-command:
+        type: string
+        default: npm run build
+      cache-dependency-path:
+        type: string
+        default: package-lock.json
+      upload-coverage:
+        type: boolean
+        default: true
+      artifact-retention-days:
+        type: number
+        default: 7
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ inputs.cache-dependency-path }}
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Lint
+        run: ${{ inputs.lint-command }}
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ inputs.cache-dependency-path }}
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Test
+        run: ${{ inputs.test-command }}
+
+      - name: Upload coverage
+        if: ${{ inputs.upload-coverage }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: ${{ inputs.working-directory }}/coverage
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ inputs.cache-dependency-path }}
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Build
+        run: ${{ inputs.build-command }}
+
