@@ -9,7 +9,7 @@ on:
 
 jobs:
   contracts:
-    uses: LMafra/platform-event-mesh/platform/ci/workflows/contracts.yaml@main
+    uses: SarradaHub/platform/.github/workflows/contracts.yaml@main
     with:
       working-directory: sarradabet/apps/api
       install-command: npm install

@@ -1,0 +1,172 @@
+name: React Vite CI
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: false
+        type: string
+        default: "."
+      node-version:
+        required: false
+        type: string
+        default: "20"
+      install-command:
+        required: false
+        type: string
+        default: "npm ci"
+      lint-command:
+        required: false
+        type: string
+        default: "npm run lint"
+      format-command:
+        required: false
+        type: string
+        default: ""
+      typecheck-command:
+        required: false
+        type: string
+        default: ""
+      test-command:
+        required: false
+        type: string
+        default: "npm run test -- --run"
+      build-command:
+        required: false
+        type: string
+        default: "npm run build"
+      coverage:
+        required: false
+        type: boolean
+        default: false
+      coverage-artifacts:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Run ESLint
+        if: ${{ inputs.lint-command != '' }}
+        run: ${{ inputs.lint-command }}
+
+      - name: Check formatting
+        if: ${{ inputs.format-command != '' }}
+        run: ${{ inputs.format-command }}
+        continue-on-error: true
+
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Type check
+        if: ${{ inputs.typecheck-command != '' }}
+        run: ${{ inputs.typecheck-command }}
+      - name: Type check via build
+        if: ${{ inputs.typecheck-command == '' && inputs.build-command != '' }}
+        run: |
+          # Extract type checking from build command (tsc -b)
+          ${{ inputs.build-command }} --dry-run || npx tsc --noEmit
+        continue-on-error: true
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Run tests
+        if: ${{ inputs.test-command != '' }}
+        run: ${{ inputs.test-command }}
+
+      - name: Upload coverage artifacts
+        if: ${{ inputs.coverage-artifacts && inputs.coverage }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            ${{ inputs.working-directory }}/coverage
+            ${{ inputs.working-directory }}/**/coverage
+          retention-days: 7
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck]
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Build
+        if: ${{ inputs.build-command != '' }}
+        run: ${{ inputs.build-command }}
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            ${{ inputs.working-directory }}/dist
+            ${{ inputs.working-directory }}/build
+          retention-days: 1
+
