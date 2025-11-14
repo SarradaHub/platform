@@ -1,0 +1,152 @@
+name: Rails Service CI
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: false
+        type: string
+        default: "."
+      ruby-version:
+        required: false
+        type: string
+        default: "3.3.6"
+      run-brakeman:
+        required: false
+        type: boolean
+        default: false
+      run-importmap-audit:
+        required: false
+        type: boolean
+        default: false
+      run-rubycritic:
+        required: false
+        type: boolean
+        default: false
+      postgres-db:
+        required: true
+        type: string
+      rspec-command:
+        required: false
+        type: string
+        default: "bundle exec rspec"
+      extra-apt-packages:
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: true
+
+      - name: Run RuboCop
+        run: bundle exec rubocop
+
+      - name: Run Brakeman
+        if: ${{ inputs.run-brakeman }}
+        run: bundle exec brakeman --no-pager
+
+  security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: true
+
+      - name: Run importmap audit
+        if: ${{ inputs.run-importmap-audit }}
+        run: bundle exec bin/rails importmap:audit
+        continue-on-error: true
+
+  quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: true
+
+      - name: Run RubyCritic
+        if: ${{ inputs.run-rubycritic }}
+        run: bundle exec rubycritic --no-browser
+        continue-on-error: true
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/${{ inputs.postgres-db }}
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE_TEST: ${{ inputs.postgres-db }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          if [ -n "${{ inputs.extra-apt-packages }}" ]; then
+            sudo apt-get install -y ${{ inputs.extra-apt-packages }}
+          fi
+
+      - name: Prepare database
+        run: bin/rails db:prepare || bundle exec rails db:prepare
+
+      - name: Run RSpec
+        run: ${{ inputs.rspec-command }}
+

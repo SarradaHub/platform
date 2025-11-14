@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  react-ci:
+    uses: SarradaHub/platform/.github/workflows/react-vite-ci.yaml@main
+    with:
+      working-directory: saturday_league_football_frontend
+      node-version: '20'
+      install-command: npm ci
+      lint-command: npm run lint
+      format-command: npm run format
+      test-command: npm run test -- --run
+      build-command: npm run build
+      coverage: true
+      coverage-artifacts: true
+

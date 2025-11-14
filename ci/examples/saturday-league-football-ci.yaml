@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contracts:
+    uses: SarradaHub/platform/.github/workflows/contracts.yaml@main
+    with:
+      working-directory: .
+      install-command: bundle install
+      test-command: bundle exec rspec spec/jobs/events/publish_match_scheduled_job_spec.rb
+      schema-glob: platform/contracts/schemas/scheduling/*.json
+
+  rails-ci:
+    uses: SarradaHub/platform/.github/workflows/rails-service-ci.yaml@main
+    with:
+      working-directory: .
+      ruby-version: '3.3.6'
+      run-brakeman: true
+      run-importmap-audit: false
+      run-rubycritic: false
+      postgres-db: saturday_league_football_test
+      rspec-command: bundle exec rspec
+      extra-apt-packages: "postgresql-client"
+

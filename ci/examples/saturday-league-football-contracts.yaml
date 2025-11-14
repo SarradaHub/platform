@@ -11,7 +11,8 @@ jobs:
   contracts:
     uses: SarradaHub/platform/.github/workflows/contracts.yaml@main
     with:
-      working-directory: pickup-game-manager
+      working-directory: saturday_league_football
       install-command: bundle install
-      test-command: bundle exec rspec spec/jobs/events/publish_payment_received_job_spec.rb
-      schema-glob: platform/contracts/schemas/finance/payment.received.v1.json
+      test-command: bundle exec rspec spec/jobs/events/publish_match_scheduled_job_spec.rb
+      schema-glob: platform/contracts/schemas/scheduling/*.json
+
