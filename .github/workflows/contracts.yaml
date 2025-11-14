@@ -32,11 +32,18 @@ jobs:
       - name: Check for package-lock.json
         id: check-package-lock
         run: |
-          if [ -f "${{ inputs.working-directory }}/package-lock.json" ]; then
+          if [ "${{ inputs.working-directory }}" = "." ]; then
+            LOCK_FILE="${{ github.workspace }}/package-lock.json"
+          else
+            LOCK_FILE="${{ github.workspace }}/${{ inputs.working-directory }}/package-lock.json"
+          fi
+          echo "lock-file-path=$LOCK_FILE" >> $GITHUB_OUTPUT
+          if [ -f "$LOCK_FILE" ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
+        working-directory: ${{ github.workspace }}
 
       - name: Setup Node (with cache)
         if: steps.check-package-lock.outputs.exists == 'true'
@@ -44,7 +51,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+          cache-dependency-path: ${{ steps.check-package-lock.outputs.lock-file-path }}
 
       - name: Setup Node (without cache)
         if: steps.check-package-lock.outputs.exists == 'false'
