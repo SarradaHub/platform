@@ -1,0 +1,210 @@
+name: Node Monorepo CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: '20'
+      working-directory:
+        type: string
+        default: '.'
+      install-command:
+        type: string
+        default: npm ci
+      lint-command:
+        type: string
+        default: npm run lint
+      typecheck-command:
+        type: string
+        default: npm run check-types
+      build-command:
+        type: string
+        default: npm run build
+      prepare-db-command:
+        type: string
+        default: ""
+      test-api-command:
+        type: string
+        default: npm run test:api
+      test-web-command:
+        type: string
+        default: npm run test:web
+      cache-dependency-path:
+        type: string
+        default: package-lock.json
+      prisma-generate:
+        type: boolean
+        default: false
+      prisma-working-directory:
+        type: string
+        default: apps/api
+      coverage-artifacts:
+        type: boolean
+        default: false
+      postgres-image:
+        type: string
+        default: postgres:15
+      postgres-user:
+        type: string
+        default: postgres
+      postgres-password:
+        type: string
+        default: postgres
+      postgres-db:
+        type: string
+        default: app_test
+      db-url:
+        type: string
+        default: postgresql://postgres:postgres@localhost:5432/app_test
+      audit-level:
+        type: string
+        default: moderate
+    secrets:
+      npm-token:
+        required: false
+
+jobs:
+  lint-and-types:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ inputs.cache-dependency-path }}
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Lint
+        run: ${{ inputs.lint-command }}
+
+      - name: Type check
+        run: ${{ inputs.typecheck-command }}
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ inputs.cache-dependency-path }}
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Prisma generate
+        if: ${{ inputs.prisma-generate }}
+        run: npm run prisma:generate
+        working-directory: ${{ inputs.working-directory }}/${{ inputs.prisma-working-directory }}
+
+      - name: Build
+        run: ${{ inputs.build-command }}
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: [lint-and-types]
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    services:
+      postgres:
+        image: ${{ inputs.postgres-image }}
+        env:
+          POSTGRES_USER: ${{ inputs.postgres-user }}
+          POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+          POSTGRES_DB: ${{ inputs.postgres-db }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: ${{ inputs.db-url }}
+      DIRECT_URL: ${{ inputs.db-url }}
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ inputs.cache-dependency-path }}
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Prisma generate
+        if: ${{ inputs.prisma-generate }}
+        run: npm run prisma:generate
+        working-directory: ${{ inputs.working-directory }}/${{ inputs.prisma-working-directory }}
+
+      - name: Prepare database
+        if: ${{ inputs.prepare-db-command != '' }}
+        run: ${{ inputs.prepare-db-command }}
+
+      - name: API Tests
+        run: ${{ inputs.test-api-command }}
+
+      - name: Web Tests
+        run: ${{ inputs.test-web-command }}
+
+      - name: Upload coverage
+        if: ${{ inputs.coverage-artifacts }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            ${{ inputs.working-directory }}/coverage
+            ${{ inputs.working-directory }}/apps/api/coverage
+            ${{ inputs.working-directory }}/apps/web/coverage
+          if-no-files-found: ignore
+
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ inputs.cache-dependency-path }}
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: npm audit
+        run: npm audit --audit-level ${{ inputs.audit-level }}
+        continue-on-error: true
+

@@ -1,0 +1,206 @@
+name: Rails Service CI
+
+on:
+  workflow_call:
+    inputs:
+      ruby-version:
+        type: string
+        default: '3.3.6'
+      working-directory:
+        type: string
+        required: true
+      bundler-cache:
+        type: boolean
+        default: true
+      run-brakeman:
+        type: boolean
+        default: true
+      run-importmap-audit:
+        type: boolean
+        default: false
+      run-rubycritic:
+        type: boolean
+        default: false
+      rspec-command:
+        type: string
+        default: bundle exec rspec
+      setup-script:
+        type: string
+        default: ""
+      postgres-image:
+        type: string
+        default: postgres:15
+      postgres-user:
+        type: string
+        default: postgres
+      postgres-password:
+        type: string
+        default: postgres
+      postgres-db:
+        type: string
+        default: app_test
+      rails-env:
+        type: string
+        default: test
+      artifact-retention-days:
+        type: number
+        default: 7
+      apt-packages:
+        type: string
+        default: "build-essential git libyaml-dev pkg-config"
+      extra-apt-packages:
+        type: string
+        default: ""
+      screenshots-path:
+        type: string
+        default: "tmp/screenshots"
+    secrets:
+      rubygems-token:
+        required: false
+
+jobs:
+  lint:
+    name: Lint (RuboCop)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: ${{ inputs.bundler-cache }}
+
+      - name: Run RuboCop
+        run: bundle exec rubocop
+
+  security:
+    if: ${{ inputs.run-brakeman || inputs.run-importmap-audit }}
+    name: Security Scans
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: ${{ inputs.bundler-cache }}
+
+      - name: Brakeman
+        if: ${{ inputs.run-brakeman }}
+        run: bin/brakeman --no-pager --format json --output tmp/brakeman.json
+
+      - name: Upload Brakeman report
+        uses: actions/upload-artifact@v4
+        if: ${{ inputs.run-brakeman && always() }}
+        with:
+          name: brakeman-report
+          path: ${{ inputs.working-directory }}/tmp/brakeman.json
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+      - name: Importmap audit
+        if: ${{ inputs.run-importmap-audit }}
+        run: bin/importmap audit
+
+  code-quality:
+    if: ${{ inputs.run-rubycritic }}
+    name: Code Quality (RubyCritic)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: ${{ inputs.bundler-cache }}
+
+      - name: Run RubyCritic
+        run: bundle exec rubycritic app lib --format html --minimum-score 0 --no-browser
+
+      - name: Upload RubyCritic report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rubycritic-report
+          path: ${{ inputs.working-directory }}/tmp/rubycritic/
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+  test:
+    name: Test (RSpec)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    services:
+      postgres:
+        image: ${{ inputs.postgres-image }}
+        env:
+          POSTGRES_USER: ${{ inputs.postgres-user }}
+          POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+          POSTGRES_DB: ${{ inputs.postgres-db }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ${{ inputs.postgres-user }}"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      RAILS_ENV: ${{ inputs.rails-env }}
+      POSTGRES_USER: ${{ inputs.postgres-user }}
+      POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+      POSTGRES_DB: ${{ inputs.postgres-db }}
+      POSTGRES_HOST: 127.0.0.1
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ${{ inputs.apt-packages }} ${{ inputs.extra-apt-packages }}
+        shell: bash
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: ${{ inputs.bundler-cache }}
+
+      - name: Additional setup
+        if: ${{ inputs.setup-script != '' }}
+        run: ${{ inputs.setup-script }}
+
+      - name: Prepare database
+        run: bundle exec rails db:prepare
+
+      - name: Run RSpec
+        run: ${{ inputs.rspec-command }}
+
+      - name: Upload screenshots
+        if: ${{ failure() && inputs.screenshots-path != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-test-screenshots
+          path: ${{ inputs.working-directory }}/${{ inputs.screenshots-path }}
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+
