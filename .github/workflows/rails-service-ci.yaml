@@ -95,7 +95,7 @@ jobs:
 
       - name: Run RubyCritic
         if: ${{ inputs.run-rubycritic }}
-        run: bundle exec rubycritic --no-browser
+        run: bundle exec rubycritic app lib --no-browser
         continue-on-error: true
 
   test:
