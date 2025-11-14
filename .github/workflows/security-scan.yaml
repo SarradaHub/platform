@@ -1,0 +1,152 @@
+name: Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: false
+        type: string
+        default: "20"
+      working-directory:
+        required: false
+        type: string
+        default: "."
+      audit-level:
+        required: false
+        type: string
+        default: "moderate"
+        description: "npm audit level (low, moderate, high, critical)"
+      fail-on-high:
+        required: false
+        type: boolean
+        default: false
+        description: "Fail workflow if high severity vulnerabilities found"
+      check-secrets:
+        required: false
+        type: boolean
+        default: true
+        description: "Check for hardcoded secrets in code"
+      codeql:
+        required: false
+        type: boolean
+        default: false
+        description: "Run CodeQL analysis"
+      codeql-languages:
+        required: false
+        type: string
+        default: "javascript"
+        description: "Comma-separated list of languages for CodeQL"
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=${{ inputs.audit-level }} --json > audit-results.json || true
+          npm audit --audit-level=${{ inputs.audit-level }}
+
+      - name: Check for high severity vulnerabilities
+        if: ${{ inputs.fail-on-high }}
+        run: |
+          if npm audit --audit-level=high --json | jq -e '.vulnerabilities | length > 0' > /dev/null; then
+            echo "❌ High severity vulnerabilities found"
+            exit 1
+          else
+            echo "✅ No high severity vulnerabilities found"
+          fi
+
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-results
+          path: ${{ inputs.working-directory }}/audit-results.json
+          retention-days: 30
+
+  secret-scan:
+    if: ${{ inputs.check-secrets }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check for sensitive files
+        run: |
+          echo "Checking for sensitive files..."
+          if [ -f ".env" ]; then
+            echo "⚠️ Warning: .env file found in repository"
+          fi
+          if [ -f "config/secrets.json" ]; then
+            echo "⚠️ Warning: secrets.json file found in repository"
+          fi
+
+      - name: Check for hardcoded secrets
+        run: |
+          # Check for hardcoded passwords (ignores tests/examples)
+          if grep -r "password.*=" --include="*.ts" --include="*.js" --include="*.json" . | grep -v "test" | grep -v "example" | grep -v "node_modules"; then
+            echo "⚠️ Warning: Potential hardcoded passwords found"
+          fi
+          
+          # Check for hardcoded API keys (ignores tests/examples)
+          if grep -r "api[_-]?key.*=" --include="*.ts" --include="*.js" --include="*.json" . | grep -v "test" | grep -v "example" | grep -v "node_modules"; then
+            echo "⚠️ Warning: Potential hardcoded API keys found"
+          fi
+
+  codeql-analysis:
+    if: ${{ inputs.codeql }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(format('["{0}"]', join(split(inputs.codeql-languages, ','), '","'))) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Setup Node.js
+        if: matrix.language == 'javascript'
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
