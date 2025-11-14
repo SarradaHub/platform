@@ -138,11 +138,11 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     services:
       postgres:
-        if: ${{ inputs.postgres-db != '' }}
         image: postgres:15
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ${{ inputs.postgres-db || 'test' }}
         ports:
           - "5432:5432"
         options: >-

@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: false
+        type: string
+        default: "20"
+      working-directory:
+        required: false
+        type: string
+        default: "."
+      install-command:
+        required: false
+        type: string
+        default: "npm ci"
+      build-command:
+        required: false
+        type: string
+        default: "npm run build"
+      prisma-generate:
+        required: false
+        type: boolean
+        default: false
+      prisma-working-directory:
+        required: false
+        type: string
+      build-paths:
+        required: false
+        type: string
+        default: "dist,build"
+        description: "Comma-separated paths to build artifacts"
+      changelog-command:
+        required: false
+        type: string
+        description: "Command to generate changelog (optional)"
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      tag_name: ${{ steps.create_release.outputs.tag_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          if [ -n "${{ inputs.changelog-command }}" ]; then
+            CHANGELOG=$(${{ inputs.changelog-command }})
+          else
+            PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+            
+            if [ -z "$PREVIOUS_TAG" ]; then
+              CHANGELOG="## What's New\n\nThis is the first release!"
+            else
+              CHANGELOG=$(git log --pretty=format:"- %s" $PREVIOUS_TAG..HEAD | head -20)
+              if [ -z "$CHANGELOG" ]; then
+                CHANGELOG="## What's New\n\n- Bug fixes and improvements"
+              else
+                CHANGELOG="## What's New\n\n$CHANGELOG"
+              fi
+            fi
+          fi
+          
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+
+  build-and-upload:
+    needs: create-release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Generate Prisma client
+        if: ${{ inputs.prisma-generate }}
+        working-directory: ${{ inputs.prisma-working-directory || inputs.working-directory }}
+        run: npx prisma generate
+
+      - name: Build application
+        if: ${{ inputs.build-command != '' }}
+        run: ${{ inputs.build-command }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ needs.create-release.outputs.tag_name }}
+          path: |
+            ${{ join(split(inputs.build-paths, ','), '\n            ') }}
+          retention-days: 30
+

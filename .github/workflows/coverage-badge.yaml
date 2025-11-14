@@ -1,0 +1,221 @@
+name: Coverage Badge
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: false
+        type: string
+        default: "20"
+      working-directory:
+        required: false
+        type: string
+        default: "."
+      install-command:
+        required: false
+        type: string
+        default: "npm ci"
+      test-command:
+        required: true
+        type: string
+        description: "Command to run tests with coverage"
+      prisma-generate:
+        required: false
+        type: boolean
+        default: false
+      prisma-working-directory:
+        required: false
+        type: string
+      prepare-db-command:
+        required: false
+        type: string
+      postgres-db:
+        required: false
+        type: string
+      db-url:
+        required: false
+        type: string
+      coverage-paths:
+        required: false
+        type: string
+        default: "**/coverage"
+        description: "Glob pattern for coverage directories"
+      badge-output-dir:
+        required: false
+        type: string
+        default: "badges"
+        description: "Directory to output coverage badges"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: ${{ inputs.postgres-db || 'test' }}
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Generate Prisma client
+        if: ${{ inputs.prisma-generate }}
+        working-directory: ${{ inputs.prisma-working-directory || inputs.working-directory }}
+        run: npx prisma generate
+
+      - name: Prepare database
+        if: ${{ inputs.prepare-db-command != '' }}
+        run: ${{ inputs.prepare-db-command }}
+        env:
+          DATABASE_URL: ${{ inputs.db-url }}
+          DIRECT_URL: ${{ inputs.db-url }}
+
+      - name: Run tests with coverage
+        run: ${{ inputs.test-command }}
+        env:
+          DATABASE_URL: ${{ inputs.db-url }}
+          DIRECT_URL: ${{ inputs.db-url }}
+          NODE_ENV: test
+
+      - name: Generate coverage badge
+        run: |
+          mkdir -p ${{ inputs.badge-output-dir }}
+          
+          # Find coverage files
+          COVERAGE_FILES=$(find . -path "*/coverage/lcov.info" -o -path "*/coverage/coverage-final.json" | head -1)
+          
+          if [ -z "$COVERAGE_FILES" ]; then
+            echo "No coverage files found"
+            exit 0
+          fi
+          
+          # Extract coverage percentage
+          if echo "$COVERAGE_FILES" | grep -q "lcov.info"; then
+            # LCOV format
+            TOTAL=$(grep -o '^LF:[0-9]*' "$COVERAGE_FILES" | head -1 | cut -d: -f2)
+            HIT=$(grep -o '^LH:[0-9]*' "$COVERAGE_FILES" | head -1 | cut -d: -f2)
+            if [ -n "$TOTAL" ] && [ -n "$HIT" ] && [ "$TOTAL" -gt 0 ]; then
+              PERCENTAGE=$((HIT * 100 / TOTAL))
+            else
+              PERCENTAGE=0
+            fi
+          elif echo "$COVERAGE_FILES" | grep -q "coverage-final.json"; then
+            # V8 format
+            PERCENTAGE=$(node -e "
+              const fs = require('fs');
+              try {
+                const coverage = JSON.parse(fs.readFileSync('$COVERAGE_FILES', 'utf8'));
+                let total = 0;
+                let covered = 0;
+                Object.values(coverage).forEach(file => {
+                  if (file.s) {
+                    Object.values(file.s).forEach(line => {
+                      total++;
+                      if (line > 0) covered++;
+                    });
+                  }
+                });
+                console.log(total > 0 ? Math.round((covered / total) * 100) : 0);
+              } catch (error) {
+                console.log(0);
+              }
+            ")
+          else
+            PERCENTAGE=0
+          fi
+          
+          # Determine color
+          COLOR="red"
+          if [ "$PERCENTAGE" -ge 90 ]; then
+            COLOR="brightgreen"
+          elif [ "$PERCENTAGE" -ge 80 ]; then
+            COLOR="green"
+          elif [ "$PERCENTAGE" -ge 70 ]; then
+            COLOR="yellowgreen"
+          elif [ "$PERCENTAGE" -ge 60 ]; then
+            COLOR="yellow"
+          elif [ "$PERCENTAGE" -ge 50 ]; then
+            COLOR="orange"
+          fi
+          
+          # Generate SVG badge
+          cat > "${{ inputs.badge-output-dir }}/coverage.svg" << EOF
+          <svg xmlns="http://www.w3.org/2000/svg" width="99" height="20">
+            <linearGradient id="b" x2="0" y2="100%">
+              <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+              <stop offset="1" stop-opacity=".1"/>
+            </linearGradient>
+            <mask id="a">
+              <rect width="99" height="20" rx="3" fill="#fff"/>
+            </mask>
+            <g mask="url(#a)">
+              <path fill="#555" d="M0 0h61v20H0z"/>
+              <path fill="#$COLOR" d="M61 0h38v20H61z"/>
+              <path fill="url(#b)" d="M0 0h99v20H0z"/>
+            </g>
+            <g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11">
+              <text x="30.5" y="15" fill="#010101" fill-opacity=".3">coverage</text>
+              <text x="30.5" y="14">coverage</text>
+              <text x="80" y="15" fill="#010101" fill-opacity=".3">$PERCENTAGE%</text>
+              <text x="80" y="14">$PERCENTAGE%</text>
+            </g>
+          </svg>
+          EOF
+          
+          echo "Coverage: $PERCENTAGE%"
+
+      - name: Commit coverage badge
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if [ -d "${{ inputs.badge-output-dir }}" ] && [ "$(ls -A ${{ inputs.badge-output-dir }})" ]; then
+            git add ${{ inputs.badge-output-dir }}/
+            git commit -m "Update coverage badge [skip ci]" || exit 0
+            
+            if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+              git push
+            fi
+          fi
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: ${{ inputs.coverage-paths }}
+          retention-days: 30
+
+      - name: Upload coverage badges
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-badges
+          path: ${{ inputs.badge-output-dir }}/
+          retention-days: 30
+
