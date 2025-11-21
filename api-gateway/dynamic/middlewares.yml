@@ -1,0 +1,85 @@
+http:
+  middlewares:
+    # Authentication middleware - forwards to Identity Service
+    auth-identity:
+      forwardAuth:
+        address: http://identity-service:3001/auth/validate
+        authResponseHeaders:
+          - X-User-Id
+          - X-User-Email
+          - X-User-Role
+        trustForwardHeader: true
+
+    # Rate limiting middleware
+    rate-limit-pickup-game-manager:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1m
+
+    rate-limit-sarradabet-api:
+      rateLimit:
+        average: 200
+        burst: 100
+        period: 1m
+
+    rate-limit-saturday-league-api:
+      rateLimit:
+        average: 150
+        burst: 75
+        period: 1m
+
+    rate-limit-identity-service:
+      rateLimit:
+        average: 50
+        burst: 25
+        period: 1m
+
+    # CORS middleware
+    cors:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        accessControlAllowOriginList:
+          - "http://localhost:3002"
+          - "http://localhost:5173"
+          - "http://localhost:5174"
+          - "http://localhost:3000"
+          - "http://127.0.0.1:3002"
+          - "http://127.0.0.1:5173"
+          - "http://127.0.0.1:5174"
+        accessControlAllowHeaders:
+          - "Content-Type"
+          - "Authorization"
+          - "X-Requested-With"
+          - "X-Request-ID"
+        accessControlAllowCredentials: true
+        accessControlMaxAge: 86400
+        addVaryHeader: true
+
+    # Strip prefix for API routes
+    strip-api-prefix:
+      stripPrefix:
+        prefixes:
+          - /api/v1
+
+    # Add security headers
+    security-headers:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
+        customResponseHeaders:
+          X-Content-Type-Options: "nosniff"
+          X-Frame-Options: "DENY"
+          X-XSS-Protection: "1; mode=block"
+          Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+
+    # Compression
+    compress:
+      compress: {}
+

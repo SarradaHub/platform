@@ -1,0 +1,194 @@
+http:
+  routers:
+    # Identity Service Routes (public, no auth required for login/register)
+    identity-register:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && PathPrefix(`/api/v1/auth/register`)"
+      service: identity-service
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+        - rate-limit-identity-service
+        - compress
+
+    identity-login:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && PathPrefix(`/api/v1/auth/login`)"
+      service: identity-service
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+        - rate-limit-identity-service
+        - compress
+
+    identity-validate:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && PathPrefix(`/api/v1/auth/validate`)"
+      service: identity-service
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+        - rate-limit-identity-service
+
+    identity-users:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && PathPrefix(`/api/v1/users`)"
+      service: identity-service
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - auth-identity
+        - cors
+        - rate-limit-identity-service
+        - compress
+
+    # Pickup Game Manager Routes
+    # Health check routes (public, no auth required)
+    pickup-game-manager-health:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && (Path(`/health`) || Path(`/ready`) || Path(`/up`))"
+      service: pickup-game-manager
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+      priority: 10
+
+    # Main API routes (all /api/v1/* paths for pickup-game-manager)
+    pickup-game-manager-api:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && (PathPrefix(`/api/v1/athletes`) || PathPrefix(`/api/v1/matches`) || PathPrefix(`/api/v1/payments`) || PathPrefix(`/api/v1/incomes`) || PathPrefix(`/api/v1/expenses`))"
+      service: pickup-game-manager
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+        - auth-identity
+        - rate-limit-pickup-game-manager
+        - compress
+      priority: 5
+
+    # SarradaBet API Routes
+    # Health check routes (public, no auth required)
+    sarradabet-health:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && (Path(`/health`) || Path(`/ready`))"
+      service: sarradabet-api
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+      priority: 10
+
+    # Dev routes (public, no auth required for development)
+    sarradabet-dev:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && PathPrefix(`/api/v1/dev`)"
+      service: sarradabet-api
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+        - rate-limit-sarradabet-api
+        - compress
+      priority: 10
+
+    # Public GET routes for categories and bets (read-only, no auth required for CORS preflight)
+    sarradabet-api-public:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && (PathPrefix(`/api/v1/categories`) || PathPrefix(`/api/v1/bets`)) && (Method(`GET`) || Method(`OPTIONS`))"
+      service: sarradabet-api
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+        - rate-limit-sarradabet-api
+        - compress
+      priority: 10
+
+    # Main API routes (all /api/v1/* paths for sarradabet)
+    # CORS must be before auth-identity to ensure CORS headers are added even on auth failures
+    sarradabet-api:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && (PathPrefix(`/api/v1/bets`) || PathPrefix(`/api/v1/categories`) || PathPrefix(`/api/v1/votes`) || PathPrefix(`/api/v1/admin`))"
+      service: sarradabet-api
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+        - auth-identity
+        - rate-limit-sarradabet-api
+        - compress
+      priority: 5
+
+    # Saturday League Football API Routes
+    # Health check routes (public, no auth required)
+    saturday-league-health:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && (Path(`/health`) || Path(`/ready`) || Path(`/up`))"
+      service: saturday-league-api
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+      priority: 10
+
+    # Public GET routes for championships (read-only, no auth required)
+    saturday-league-api-public:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && PathPrefix(`/api/v1/championships`) && (Method(`GET`) || Method(`OPTIONS`))"
+      service: saturday-league-api
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+        - rate-limit-saturday-league-api
+        - compress
+      priority: 10
+
+    # Main API routes (all /api/v1/* paths for saturday-league)
+    # CORS must be before auth-identity to ensure CORS headers are added even on auth failures
+    saturday-league-api:
+      rule: "(Host(`api.sarradahub.local`) || Host(`localhost`)) && (PathPrefix(`/api/v1/championships`) || PathPrefix(`/api/v1/rounds`) || PathPrefix(`/api/v1/matches`) || PathPrefix(`/api/v1/teams`) || PathPrefix(`/api/v1/players`) || PathPrefix(`/api/v1/player_stats`))"
+      service: saturday-league-api
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - cors
+        - auth-identity
+        - rate-limit-saturday-league-api
+        - compress
+      priority: 5
+
+  services:
+    identity-service:
+      loadBalancer:
+        servers:
+          - url: http://identity-service:3001
+
+    pickup-game-manager:
+      loadBalancer:
+        servers:
+          - url: http://pickup-game-manager:3000
+
+    sarradabet-api:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:8000
+        healthCheck:
+          path: /health
+          interval: 10s
+          timeout: 3s
+
+    saturday-league-api:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:3004
+        healthCheck:
+          path: /health
+          interval: 10s
+          timeout: 3s
