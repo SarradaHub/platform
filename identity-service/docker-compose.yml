@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: identity-service-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: platform_identity
+    ports:
+      - "5435:5432"
+    volumes:
+      - identity-db-data:/var/lib/postgresql/data
+    networks:
+      - sarradahub-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  identity-service:
+    build: .
+    container_name: identity-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:password@db:5432/platform_identity
+      DIRECT_URL: postgresql://postgres:password@db:5432/platform_identity
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-in-production}
+      JWT_EXPIRES_IN: 24h
+      JWT_REFRESH_EXPIRES_IN: 7d
+      BCRYPT_ROUNDS: 12
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sarradahub-network
+    restart: unless-stopped
+    volumes:
+      - ./src:/app/src
+      - /app/node_modules
+
+volumes:
+  identity-db-data:
+
+networks:
+  sarradahub-network:
+    external: true
+    name: sarradahub-network
+
