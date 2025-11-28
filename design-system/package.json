@@ -66,6 +66,9 @@
     "react",
     "tailwindcss"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "vite": "^7.1.9"
+  }
 }
 
