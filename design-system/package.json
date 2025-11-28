@@ -23,7 +23,7 @@
     "tailwind.config.cjs"
   ],
   "scripts": {
-    "build": "tsc && npm run build:css",
+    "build": "tsc -p tsconfig.build.json && npm run build:css",
     "build:css": "node scripts/generate-css-variables.js",
     "dev": "tsc --watch",
     "lint": "eslint .",
